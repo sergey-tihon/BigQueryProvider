@@ -57,28 +57,26 @@ let internal createOutputType (rootType:ProvidedTypeDefinition) (schema: Schema)
 
     recordType
 
+let execImpl commandText (row: obj[]) =
+    let schema =
+        (BigQueryHelper.analyzeQueryRaw commandText).stdout
+        |> parseQueryMeta
+    let data = System.Collections.Generic.Dictionary()
+    schema.Fields
+    |> List.iter (fun y ->
+        match y with
+        | Value(index, name, _, _) ->
+            data.Add((string)name, row.[(int)index])
+        | _ -> ())
+    DynamicRecord(data)
+
 let createExecute (commandText: string) providedOutputType : MemberInfo list =
     [
         let m = ProvidedMethod("execute", [], providedOutputType)
         m.InvokeCode <- fun exprArgs ->
-            let mapping =
-                <@@
-                    fun (row: obj[]) ->
-                        let schema =
-                            (BigQueryHelper.analyzeQueryRaw commandText).stdout
-                            |> parseQueryMeta
-                        let data = System.Collections.Generic.Dictionary()
-                        schema.Fields
-                        |> List.iter (fun y ->
-                            match y with
-                            | Value(index, name, fieldType, mode) ->
-                                data.Add(name, row.[index])
-                            | _ -> ())
-                        DynamicRecord(data) |> box
-                @@>
             <@@
                 let result = analyzeQueryRaw commandText
-                (%%mapping) ([|result.stdout :> obj|])
+                execImpl commandText ([|result.stdout :> obj|])
             @@>
 
         yield m :> MemberInfo
